@@ -38,6 +38,8 @@
       font-family: 'Rajdhani', 'Noto Sans SC', sans-serif;
       overflow: hidden;
       touch-action: none;
+      margin: 0;
+      padding: 0;
     }
     .font-tech { font-family: 'Orbitron', sans-serif; }
     .font-cn { font-family: 'Noto Sans SC', sans-serif; }
@@ -70,7 +72,7 @@
   <script type="text/babel" data-presets="react,typescript">
     const { useState, useEffect, useRef, useCallback } = React;
 
-    // --- 1. TYPES & CONSTANTS ---
+    // --- 1. TYPES & CONSTANTS (无 export) ---
     enum GameState {
       MENU = 'MENU',
       PLAYING = 'PLAYING',
@@ -84,26 +86,7 @@
       FLOATING_BLOCK = 'FLOATING_BLOCK'
     }
 
-    interface Obstacle {
-      id: number;
-      type: ObstacleType;
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-      passed: boolean;
-    }
-
-    interface Particle {
-      x: number;
-      y: number;
-      vx: number;
-      vy: number;
-      life: number;
-      color: string;
-      size: number;
-    }
-
+    // --- 2. CONFIG ---
     const GAME_CONFIG = {
       gravity: 0.6,
       jumpStrength: -11.5,
@@ -122,19 +105,19 @@
     const CANVAS_WIDTH = 1280;
     const CANVAS_HEIGHT = 720;
 
-    // --- 2. AUDIO MANAGER ---
+    // --- 3. AUDIO MANAGER (无 export) ---
     class AudioManager {
-      ctx: AudioContext | null = null;
-      isPlaying: boolean = false;
-      nextNoteTime: number = 0;
-      tempo: number = 130;
-      beatCount: number = 0;
-      schedulerTimer: number | null = null;
-      masterGain: GainNode | null = null;
+      ctx = null;
+      isPlaying = false;
+      nextNoteTime = 0;
+      tempo = 130;
+      beatCount = 0;
+      schedulerTimer = null;
+      masterGain = null;
 
       init() {
         if (!this.ctx) {
-          const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
           this.ctx = new AudioContextClass();
           this.masterGain = this.ctx.createGain();
           this.masterGain.gain.value = 0.4;
@@ -142,7 +125,7 @@
         }
       }
 
-      toggleMute(muted: boolean) {
+      toggleMute(muted) {
         if (this.masterGain && this.ctx) {
           this.masterGain.gain.setTargetAtTime(muted ? 0 : 0.4, this.ctx.currentTime, 0.1);
         }
@@ -156,7 +139,7 @@
         if (this.isPlaying) return;
         
         this.isPlaying = true;
-        this.nextNoteTime = this.ctx!.currentTime + 0.1;
+        this.nextNoteTime = this.ctx.currentTime + 0.1;
         this.beatCount = 0;
         this.scheduler();
       }
@@ -218,7 +201,7 @@
         this.schedulerTimer = window.setTimeout(this.scheduler, 25);
       }
 
-      scheduleNote(beat: number, time: number) {
+      scheduleNote(beat, time) {
         if (!this.ctx || !this.masterGain) return;
 
         // Bassline
@@ -301,7 +284,7 @@
 
     const audioManager = new AudioManager();
 
-    // --- 3. COMPONENTS ---
+    // --- 4. COMPONENTS (无 export) ---
     
     // GameCanvas Component
     const GameCanvas = ({ gameState, setGameState, setScore }) => {
@@ -726,7 +709,7 @@
       );
     };
 
-    // --- 4. MAIN APP ---
+    // --- 5. MAIN APP ---
     const App = () => {
       const [gameState, setGameState] = useState(GameState.MENU);
       const [score, setScore] = useState(0);
@@ -789,16 +772,14 @@
       );
     };
 
-    // --- 5. RENDER ---
+    // --- 6. RENDER ---
     const rootElement = document.getElementById('root');
-    if (rootElement) {
-        const root = ReactDOM.createRoot(rootElement);
-        root.render(
-        <React.StrictMode>
-            <App />
-        </React.StrictMode>
-        );
-    }
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>
+    );
   </script>
 </body>
 </html>
