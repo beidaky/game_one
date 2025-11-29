@@ -81,14 +81,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, setSco
         handleJump();
       }
     };
-    const handleTouchStart = (e: TouchEvent) => {
-        // Prevent default only if it's on the canvas to allow UI interaction
-       // e.preventDefault(); // Sometimes blocks buttons, handled by onClick on container
-       handleJump();
-    };
 
     window.addEventListener('keydown', handleKeyDown);
-    // Touch listener is attached to div container for better control
     
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
@@ -226,7 +220,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, setSco
     
     // Vertical lines moving left
     const gridSize = 100;
-    const gridOffsetX = bgOffsetRef.current % gridSize;
+    // Fix: Ensure modulo is positive
+    let gridOffsetX = bgOffsetRef.current % gridSize;
+    if (gridOffsetX < 0) gridOffsetX += gridSize;
     
     ctx.beginPath();
     // Horizon line

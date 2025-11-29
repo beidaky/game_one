@@ -65,8 +65,8 @@ const App: React.FC = () => {
       </div>
       
       {/* Mobile Controls Hint (Visible only on touch devices) */}
-      <div className="absolute bottom-4 text-gray-500 text-sm opacity-50 pointer-events-none md:hidden">
-        Tap to Jump
+      <div className="absolute bottom-4 text-gray-500 text-sm opacity-50 pointer-events-none md:hidden font-cn">
+        点击屏幕跳跃
       </div>
     </div>
   );

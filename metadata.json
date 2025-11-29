@@ -1,5 +1,5 @@
 {
-  "name": "Neon Dash",
-  "description": "A high-speed, rhythm-based platformer featuring neon aesthetics, procedural obstacles, and generated synthwave audio. Built with React, TypeScript, and HTML5 Canvas.",
+  "name": "霓虹冲刺 (Neon Dash)",
+  "description": "一款快节奏的节奏平台游戏，具有霓虹美学、程序化障碍和生成的合成波音频。使用 React、TypeScript 和 HTML5 Canvas 构建。",
   "requestFramePermissions": []
 }

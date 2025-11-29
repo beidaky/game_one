@@ -15,5 +15,5 @@ export const COLORS = {
   grid: '#1a1a2e'
 };
 
-export const CANVAS_WIDTH = 1200; // Internal resolution width
-export const CANVAS_HEIGHT = 600; // Internal resolution height
+export const CANVAS_WIDTH = 1280; // Internal resolution width (720p)
+export const CANVAS_HEIGHT = 720; // Internal resolution height (720p)
