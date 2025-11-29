@@ -40,6 +40,7 @@
       touch-action: none;
       margin: 0;
       padding: 0;
+      -webkit-font-smoothing: antialiased;
     }
     .font-tech { font-family: 'Orbitron', sans-serif; }
     .font-cn { font-family: 'Noto Sans SC', sans-serif; }
@@ -68,25 +69,25 @@
 <body>
   <div id="root"></div>
 
-  <!-- 游戏主逻辑 -->
-  <script type="text/babel" data-presets="react,typescript">
+  <!-- 游戏主逻辑 (纯 JS 版本，无 TS 依赖) -->
+  <script type="text/babel">
     const { useState, useEffect, useRef, useCallback } = React;
 
-    // --- 1. TYPES & CONSTANTS (无 export) ---
-    enum GameState {
-      MENU = 'MENU',
-      PLAYING = 'PLAYING',
-      PAUSED = 'PAUSED',
-      GAME_OVER = 'GAME_OVER'
-    }
+    // --- 1. 常量定义 (替代 Enum) ---
+    const GameState = {
+      MENU: 'MENU',
+      PLAYING: 'PLAYING',
+      PAUSED: 'PAUSED',
+      GAME_OVER: 'GAME_OVER'
+    };
 
-    enum ObstacleType {
-      SPIKE = 'SPIKE',
-      BLOCK = 'BLOCK',
-      FLOATING_BLOCK = 'FLOATING_BLOCK'
-    }
+    const ObstacleType = {
+      SPIKE: 'SPIKE',
+      BLOCK: 'BLOCK',
+      FLOATING_BLOCK: 'FLOATING_BLOCK'
+    };
 
-    // --- 2. CONFIG ---
+    // --- 2. 游戏配置 ---
     const GAME_CONFIG = {
       gravity: 0.6,
       jumpStrength: -11.5,
@@ -105,15 +106,17 @@
     const CANVAS_WIDTH = 1280;
     const CANVAS_HEIGHT = 720;
 
-    // --- 3. AUDIO MANAGER (无 export) ---
+    // --- 3. 音频管理器 (Class) ---
     class AudioManager {
-      ctx = null;
-      isPlaying = false;
-      nextNoteTime = 0;
-      tempo = 130;
-      beatCount = 0;
-      schedulerTimer = null;
-      masterGain = null;
+      constructor() {
+        this.ctx = null;
+        this.isPlaying = false;
+        this.nextNoteTime = 0;
+        this.tempo = 130;
+        this.beatCount = 0;
+        this.schedulerTimer = null;
+        this.masterGain = null;
+      }
 
       init() {
         if (!this.ctx) {
@@ -133,7 +136,7 @@
 
       startMusic() {
         if (!this.ctx) this.init();
-        if (this.ctx?.state === 'suspended') {
+        if (this.ctx && this.ctx.state === 'suspended') {
           this.ctx.resume();
         }
         if (this.isPlaying) return;
@@ -271,7 +274,7 @@
       }
 
       createNoiseBuffer() {
-        if (!this.ctx) throw new Error("No Context");
+        if (!this.ctx) return null;
         const bufferSize = this.ctx.sampleRate * 2;
         const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
         const data = buffer.getChannelData(0);
@@ -284,7 +287,7 @@
 
     const audioManager = new AudioManager();
 
-    // --- 4. COMPONENTS (无 export) ---
+    // --- 4. 组件 (Components) ---
     
     // GameCanvas Component
     const GameCanvas = ({ gameState, setGameState, setScore }) => {
@@ -709,7 +712,7 @@
       );
     };
 
-    // --- 5. MAIN APP ---
+    // --- 5. 主应用 (Main App) ---
     const App = () => {
       const [gameState, setGameState] = useState(GameState.MENU);
       const [score, setScore] = useState(0);
@@ -772,7 +775,7 @@
       );
     };
 
-    // --- 6. RENDER ---
+    // --- 6. 渲染 (Render) ---
     const rootElement = document.getElementById('root');
     const root = ReactDOM.createRoot(rootElement);
     root.render(
