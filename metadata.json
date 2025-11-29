@@ -1,0 +1,5 @@
+{
+  "name": "Neon Dash",
+  "description": "A high-speed, rhythm-based platformer featuring neon aesthetics, procedural obstacles, and generated synthwave audio. Built with React, TypeScript, and HTML5 Canvas.",
+  "requestFramePermissions": []
+}
