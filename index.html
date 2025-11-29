@@ -1,50 +1,59 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
-    <title>霓虹冲刺 | Neon Dash</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              neon: {
-                blue: '#00f3ff',
-                pink: '#ff00ff',
-                green: '#00ff00',
-                purple: '#bc13fe',
-                dark: '#0a0a12'
-              }
-            },
-            animation: {
-              'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+  <title>霓虹冲刺 | Neon Dash</title>
+  
+  <!-- 样式库 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            neon: {
+              blue: '#00f3ff',
+              pink: '#ff00ff',
+              green: '#00ff00',
+              purple: '#bc13fe',
+              dark: '#0a0a12'
             }
+          },
+          animation: {
+            'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
           }
         }
       }
-    </script>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;700&family=Noto+Sans+SC:wght@400;700&display=swap" rel="stylesheet">
-    <style>
-      body {
-        background-color: #050505;
-        color: white;
-        font-family: 'Rajdhani', 'Noto Sans SC', sans-serif;
-        overflow: hidden;
-        touch-action: none;
-      }
-      .font-tech {
-        font-family: 'Orbitron', sans-serif;
-      }
-      .font-cn {
-        font-family: 'Noto Sans SC', sans-serif;
-      }
-      canvas {
-        image-rendering: pixelated; 
-      }
-    </style>
-  <script type="importmap">
+    }
+  </script>
+  
+  <!-- 字体 -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;700&family=Noto+Sans+SC:wght@400;700&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      background-color: #050505;
+      color: white;
+      font-family: 'Rajdhani', 'Noto Sans SC', sans-serif;
+      overflow: hidden;
+      touch-action: none;
+    }
+    .font-tech { font-family: 'Orbitron', sans-serif; }
+    .font-cn { font-family: 'Noto Sans SC', sans-serif; }
+    canvas { image-rendering: pixelated; }
+    
+    /* 自定义滚动条隐藏 */
+    ::-webkit-scrollbar { width: 0px; background: transparent; }
+  </style>
+
+  <!-- React 依赖 (UMD 版本) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel Standalone -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script type="importmap">
 {
   "imports": {
     "react": "https://aistudiocdn.com/react@^19.2.0",
@@ -54,8 +63,742 @@
 }
 </script>
 </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="./index.tsx"></script>
-  </body>
+<body>
+  <div id="root"></div>
+
+  <!-- 游戏主逻辑 -->
+  <script type="text/babel" data-presets="react,typescript">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // --- 1. TYPES & CONSTANTS ---
+    enum GameState {
+      MENU = 'MENU',
+      PLAYING = 'PLAYING',
+      PAUSED = 'PAUSED',
+      GAME_OVER = 'GAME_OVER'
+    }
+
+    enum ObstacleType {
+      SPIKE = 'SPIKE',
+      BLOCK = 'BLOCK',
+      FLOATING_BLOCK = 'FLOATING_BLOCK'
+    }
+
+    interface Obstacle {
+      id: number;
+      type: ObstacleType;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      passed: boolean;
+    }
+
+    interface Particle {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      life: number;
+      color: string;
+      size: number;
+    }
+
+    const GAME_CONFIG = {
+      gravity: 0.6,
+      jumpStrength: -11.5,
+      speed: 7,
+      groundHeight: 100 
+    };
+
+    const COLORS = {
+      primary: '#00f3ff', 
+      secondary: '#ff00ff', 
+      danger: '#ff2a2a', 
+      background: '#0a0a12',
+      grid: '#1a1a2e'
+    };
+
+    const CANVAS_WIDTH = 1280;
+    const CANVAS_HEIGHT = 720;
+
+    // --- 2. AUDIO MANAGER ---
+    class AudioManager {
+      ctx: AudioContext | null = null;
+      isPlaying: boolean = false;
+      nextNoteTime: number = 0;
+      tempo: number = 130;
+      beatCount: number = 0;
+      schedulerTimer: number | null = null;
+      masterGain: GainNode | null = null;
+
+      init() {
+        if (!this.ctx) {
+          const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+          this.ctx = new AudioContextClass();
+          this.masterGain = this.ctx.createGain();
+          this.masterGain.gain.value = 0.4;
+          this.masterGain.connect(this.ctx.destination);
+        }
+      }
+
+      toggleMute(muted: boolean) {
+        if (this.masterGain && this.ctx) {
+          this.masterGain.gain.setTargetAtTime(muted ? 0 : 0.4, this.ctx.currentTime, 0.1);
+        }
+      }
+
+      startMusic() {
+        if (!this.ctx) this.init();
+        if (this.ctx?.state === 'suspended') {
+          this.ctx.resume();
+        }
+        if (this.isPlaying) return;
+        
+        this.isPlaying = true;
+        this.nextNoteTime = this.ctx!.currentTime + 0.1;
+        this.beatCount = 0;
+        this.scheduler();
+      }
+
+      stopMusic() {
+        this.isPlaying = false;
+        if (this.schedulerTimer) {
+          window.clearTimeout(this.schedulerTimer);
+        }
+      }
+
+      playJumpSound() {
+        if (!this.ctx || !this.masterGain) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(600, this.ctx.currentTime + 0.1);
+        
+        gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.1);
+      }
+
+      playCrashSound() {
+        if (!this.ctx || !this.masterGain) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(100, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(10, this.ctx.currentTime + 0.5);
+
+        gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
+
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.5);
+      }
+
+      scheduler = () => {
+        if (!this.ctx || !this.isPlaying) return;
+
+        while (this.nextNoteTime < this.ctx.currentTime + 0.1) {
+          this.scheduleNote(this.beatCount, this.nextNoteTime);
+          this.nextNoteTime += 60.0 / this.tempo / 4;
+          this.beatCount++;
+        }
+        
+        this.schedulerTimer = window.setTimeout(this.scheduler, 25);
+      }
+
+      scheduleNote(beat: number, time: number) {
+        if (!this.ctx || !this.masterGain) return;
+
+        // Bassline
+        if (beat % 2 === 0) {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.connect(gain);
+          gain.connect(this.masterGain);
+
+          const notes = [65.41, 65.41, 77.78, 65.41, 58.27, 58.27, 48.00, 58.27];
+          const freq = notes[(beat / 2) % 8];
+
+          osc.type = 'sawtooth';
+          osc.frequency.value = freq;
+          
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(500, time);
+          filter.frequency.exponentialRampToValueAtTime(100, time + 0.2);
+          osc.disconnect();
+          osc.connect(filter);
+          filter.connect(gain);
+
+          gain.gain.setValueAtTime(0.3, time);
+          gain.gain.exponentialRampToValueAtTime(0.01, time + 0.2);
+
+          osc.start(time);
+          osc.stop(time + 0.2);
+        }
+
+        // Kick
+        if (beat % 4 === 0) {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.connect(gain);
+          gain.connect(this.masterGain);
+
+          osc.frequency.setValueAtTime(150, time);
+          osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.5);
+
+          gain.gain.setValueAtTime(0.7, time);
+          gain.gain.exponentialRampToValueAtTime(0.01, time + 0.5);
+
+          osc.start(time);
+          osc.stop(time + 0.5);
+        }
+
+        // Snare
+        if ((beat + 4) % 8 === 0) {
+          const noiseBuffer = this.createNoiseBuffer();
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = noiseBuffer;
+          const noiseFilter = this.ctx.createBiquadFilter();
+          noiseFilter.type = 'highpass';
+          noiseFilter.frequency.value = 1000;
+          const noiseGain = this.ctx.createGain();
+          
+          noise.connect(noiseFilter);
+          noiseFilter.connect(noiseGain);
+          noiseGain.connect(this.masterGain);
+
+          noiseGain.gain.setValueAtTime(0.4, time);
+          noiseGain.gain.exponentialRampToValueAtTime(0.01, time + 0.2);
+          
+          noise.start(time);
+        }
+      }
+
+      createNoiseBuffer() {
+        if (!this.ctx) throw new Error("No Context");
+        const bufferSize = this.ctx.sampleRate * 2;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+        return buffer;
+      }
+    }
+
+    const audioManager = new AudioManager();
+
+    // --- 3. COMPONENTS ---
+    
+    // GameCanvas Component
+    const GameCanvas = ({ gameState, setGameState, setScore }) => {
+      const canvasRef = useRef(null);
+      const requestRef = useRef(0);
+      
+      const playerRef = useRef({
+        x: 200,
+        y: 0,
+        dy: 0,
+        rotation: 0,
+        isGrounded: true,
+        width: 40,
+        height: 40
+      });
+      const obstaclesRef = useRef([]);
+      const particlesRef = useRef([]);
+      const scoreRef = useRef(0);
+      const frameCountRef = useRef(0);
+      const bgOffsetRef = useRef(0);
+
+      const createExplosion = (x, y, color) => {
+        for (let i = 0; i < 20; i++) {
+          particlesRef.current.push({
+            x,
+            y,
+            vx: (Math.random() - 0.5) * 15,
+            vy: (Math.random() - 0.5) * 15,
+            life: 1.0,
+            color: color,
+            size: Math.random() * 5 + 2
+          });
+        }
+      };
+
+      const resetGame = useCallback(() => {
+        playerRef.current = {
+          x: 200,
+          y: CANVAS_HEIGHT - GAME_CONFIG.groundHeight - 40,
+          dy: 0,
+          rotation: 0,
+          isGrounded: true,
+          width: 40,
+          height: 40
+        };
+        obstaclesRef.current = [];
+        particlesRef.current = [];
+        scoreRef.current = 0;
+        frameCountRef.current = 0;
+        setScore(0);
+      }, [setScore]);
+
+      const handleJump = useCallback(() => {
+        if (gameState !== GameState.PLAYING) return;
+        
+        if (playerRef.current.isGrounded) {
+          playerRef.current.dy = GAME_CONFIG.jumpStrength;
+          playerRef.current.isGrounded = false;
+          audioManager.playJumpSound();
+        }
+      }, [gameState]);
+
+      useEffect(() => {
+        const handleKeyDown = (e) => {
+          if (e.code === 'Space' || e.code === 'ArrowUp') {
+            e.preventDefault();
+            handleJump();
+          }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+      }, [handleJump]);
+
+      useEffect(() => {
+        if (gameState === GameState.PLAYING && obstaclesRef.current.length === 0) {
+          resetGame();
+        }
+      }, [gameState, resetGame]);
+
+      const update = () => {
+        if (gameState !== GameState.PLAYING) return;
+
+        const player = playerRef.current;
+
+        // Physics
+        player.dy += GAME_CONFIG.gravity;
+        player.y += player.dy;
+
+        if (!player.isGrounded) {
+          player.rotation += 0.15; 
+        } else {
+          const snap = Math.round(player.rotation / (Math.PI / 2)) * (Math.PI / 2);
+          player.rotation = player.rotation * 0.8 + snap * 0.2;
+        }
+
+        const groundY = CANVAS_HEIGHT - GAME_CONFIG.groundHeight - player.height;
+        if (player.y >= groundY) {
+          player.y = groundY;
+          player.dy = 0;
+          player.isGrounded = true;
+        }
+
+        // Spawning
+        frameCountRef.current++;
+        if (frameCountRef.current % 100 === 0 && Math.random() > 0.3) {
+          const type = Math.random() > 0.7 ? ObstacleType.BLOCK : ObstacleType.SPIKE;
+          const isFloating = Math.random() > 0.8;
+          
+          let w = 40; 
+          let h = 40;
+          let y = CANVAS_HEIGHT - GAME_CONFIG.groundHeight - h;
+
+          if (type === ObstacleType.SPIKE) {
+            w = 30;
+            h = 40;
+          }
+
+          if (isFloating && type === ObstacleType.BLOCK) {
+             y -= 50;
+          }
+
+          const count = Math.random() > 0.8 ? 2 : 1;
+          for(let i=0; i<count; i++) {
+            obstaclesRef.current.push({
+                id: Date.now() + i,
+                type,
+                x: CANVAS_WIDTH + (i * w),
+                y: y,
+                width: w,
+                height: h,
+                passed: false
+            });
+          }
+        }
+
+        // Move Obstacles
+        obstaclesRef.current.forEach(obs => {
+          obs.x -= GAME_CONFIG.speed;
+          if (!obs.passed && obs.x + obs.width < player.x) {
+            obs.passed = true;
+            scoreRef.current += 100;
+            setScore(scoreRef.current);
+          }
+        });
+
+        obstaclesRef.current = obstaclesRef.current.filter(obs => obs.x + obs.width > -100);
+
+        // Collision
+        const hitBox = 8;
+        for (const obs of obstaclesRef.current) {
+          if (
+            player.x + hitBox < obs.x + obs.width &&
+            player.x + player.width - hitBox > obs.x &&
+            player.y + hitBox < obs.y + obs.height &&
+            player.y + player.height - hitBox > obs.y
+          ) {
+            createExplosion(player.x + player.width/2, player.y + player.height/2, COLORS.primary);
+            audioManager.playCrashSound();
+            setGameState(GameState.GAME_OVER);
+            return; 
+          }
+        }
+
+        // Particles
+        particlesRef.current.forEach(p => {
+          p.x += p.vx;
+          p.y += p.vy;
+          p.life -= 0.02;
+        });
+        particlesRef.current = particlesRef.current.filter(p => p.life > 0);
+
+        bgOffsetRef.current -= 0.5;
+      };
+
+      const draw = (ctx) => {
+        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        // Background
+        const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+        gradient.addColorStop(0, '#020205');
+        gradient.addColorStop(1, '#1a1a2e');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        // Grid
+        ctx.strokeStyle = 'rgba(255, 0, 255, 0.15)';
+        ctx.lineWidth = 2;
+        const perspectiveY = CANVAS_HEIGHT / 2;
+        
+        const gridSize = 100;
+        let gridOffsetX = bgOffsetRef.current % gridSize;
+        if (gridOffsetX < 0) gridOffsetX += gridSize;
+        
+        ctx.beginPath();
+        ctx.moveTo(0, perspectiveY);
+        ctx.lineTo(CANVAS_WIDTH, perspectiveY);
+
+        for (let x = gridOffsetX; x < CANVAS_WIDTH; x += gridSize) {
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, CANVAS_HEIGHT);
+        }
+        for (let y = 0; y < CANVAS_HEIGHT; y += gridSize) {
+            ctx.moveTo(0, y);
+            ctx.lineTo(CANVAS_WIDTH, y);
+        }
+        ctx.stroke();
+
+        // Ground
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, CANVAS_HEIGHT - GAME_CONFIG.groundHeight, CANVAS_WIDTH, GAME_CONFIG.groundHeight);
+        
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = COLORS.primary;
+        ctx.strokeStyle = COLORS.primary;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(0, CANVAS_HEIGHT - GAME_CONFIG.groundHeight);
+        ctx.lineTo(CANVAS_WIDTH, CANVAS_HEIGHT - GAME_CONFIG.groundHeight);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Obstacles
+        obstaclesRef.current.forEach(obs => {
+          ctx.shadowBlur = 15;
+          if (obs.type === ObstacleType.SPIKE) {
+            ctx.shadowColor = COLORS.danger;
+            ctx.fillStyle = COLORS.danger;
+            ctx.beginPath();
+            ctx.moveTo(obs.x, obs.y + obs.height);
+            ctx.lineTo(obs.x + obs.width / 2, obs.y);
+            ctx.lineTo(obs.x + obs.width, obs.y + obs.height);
+            ctx.fill();
+            
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.moveTo(obs.x + 5, obs.y + obs.height - 2);
+            ctx.lineTo(obs.x + obs.width / 2, obs.y + 10);
+            ctx.lineTo(obs.x + obs.width - 5, obs.y + obs.height - 2);
+            ctx.fill();
+          } else {
+            ctx.shadowColor = COLORS.secondary;
+            ctx.fillStyle = COLORS.secondary;
+            ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
+          }
+          ctx.shadowBlur = 0;
+        });
+
+        // Player
+        if (gameState !== GameState.GAME_OVER) {
+            const p = playerRef.current;
+            ctx.save();
+            ctx.translate(p.x + p.width/2, p.y + p.height/2);
+            ctx.rotate(p.rotation);
+            
+            ctx.shadowBlur = 25;
+            ctx.shadowColor = COLORS.primary;
+            ctx.fillStyle = COLORS.primary;
+            ctx.fillRect(-p.width/2, -p.height/2, p.width, p.height);
+            
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(-p.width/4, -p.height/4, p.width/2, p.height/2);
+            
+            ctx.restore();
+            ctx.shadowBlur = 0;
+
+            if (p.dy !== 0 || Math.random() > 0.5) {
+                 particlesRef.current.push({
+                    x: p.x,
+                    y: p.y + p.height/2,
+                    vx: -5,
+                    vy: (Math.random() - 0.5) * 2,
+                    life: 0.5,
+                    color: COLORS.primary,
+                    size: 5
+                 });
+            }
+        }
+
+        // Particles
+        particlesRef.current.forEach(p => {
+            ctx.globalAlpha = p.life;
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, p.size, p.size);
+            ctx.globalAlpha = 1.0;
+        });
+      };
+
+      const loop = useCallback(() => {
+        update();
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) draw(ctx);
+        }
+        requestRef.current = requestAnimationFrame(loop);
+      }, [gameState]);
+
+      useEffect(() => {
+        requestRef.current = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(requestRef.current);
+      }, [loop]);
+
+      return (
+        <canvas
+          ref={canvasRef}
+          width={CANVAS_WIDTH}
+          height={CANVAS_HEIGHT}
+          onClick={handleJump}
+          className="w-full h-full block touch-manipulation cursor-pointer"
+        />
+      );
+    };
+
+    // MenuOverlay Component
+    const MenuOverlay = ({ gameState, score, onStart, onResume, onRestart }) => {
+      if (gameState === GameState.PLAYING) return null;
+
+      return (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="text-center p-8 border-2 border-neon-blue rounded-lg bg-black/80 shadow-[0_0_50px_rgba(0,243,255,0.3)] min-w-[320px]">
+            
+            {gameState === GameState.MENU && (
+              <>
+                <h1 className="text-6xl font-tech text-transparent bg-clip-text bg-gradient-to-r from-neon-blue to-neon-purple mb-8 animate-pulse">
+                  霓虹冲刺
+                </h1>
+                <p className="text-gray-300 mb-8 font-cn text-lg">点击鼠标 或 按空格键跳跃</p>
+                <button
+                  onClick={onStart}
+                  className="px-8 py-3 bg-neon-blue text-black font-bold text-xl rounded hover:bg-white hover:shadow-[0_0_20px_#fff] transition-all font-cn tracking-widest"
+                >
+                  开始游戏
+                </button>
+              </>
+            )}
+
+            {gameState === GameState.PAUSED && (
+              <>
+                <h2 className="text-5xl font-cn font-bold text-neon-pink mb-8 tracking-widest">暂停</h2>
+                <div className="flex flex-col gap-4">
+                  <button
+                    onClick={onResume}
+                    className="px-8 py-3 border border-neon-green text-neon-green hover:bg-neon-green hover:text-black transition-all font-cn text-xl font-bold"
+                  >
+                    继续游戏
+                  </button>
+                  <button
+                    onClick={onRestart}
+                    className="px-8 py-3 border border-red-500 text-red-500 hover:bg-red-500 hover:text-white transition-all font-cn text-xl font-bold"
+                  >
+                    重新开始
+                  </button>
+                </div>
+              </>
+            )}
+
+            {gameState === GameState.GAME_OVER && (
+              <>
+                <h2 className="text-5xl font-cn font-bold text-red-600 mb-4 tracking-wider">游戏结束</h2>
+                <div className="text-2xl text-white mb-8 font-mono">
+                  得分: <span className="text-neon-blue">{score}</span>
+                </div>
+                <button
+                  onClick={onRestart}
+                  className="px-8 py-3 bg-neon-purple text-white font-bold text-xl rounded hover:bg-white hover:text-black hover:shadow-[0_0_20px_#bd00ff] transition-all font-cn tracking-widest"
+                >
+                  再试一次
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    // Controls Component
+    const Controls = ({ gameState, onPause, score }) => {
+      const [isMuted, setIsMuted] = useState(false);
+
+      const toggleMute = (e) => {
+        e.stopPropagation();
+        const newVal = !isMuted;
+        setIsMuted(newVal);
+        audioManager.toggleMute(newVal);
+      };
+
+      return (
+        <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-start z-20 pointer-events-none">
+          <div className="flex flex-col">
+            <span className="text-neon-blue font-tech text-3xl drop-shadow-[0_0_10px_rgba(0,243,255,0.8)]">
+              {score.toString().padStart(6, '0')}
+            </span>
+          </div>
+
+          <div className="flex gap-4 pointer-events-auto">
+            <button
+              onClick={toggleMute}
+              className={`p-3 rounded-full border-2 transition-all ${isMuted ? 'border-gray-500 text-gray-500' : 'border-neon-green text-neon-green shadow-[0_0_15px_#00ff00]'}`}
+              title="切换音乐"
+            >
+              {isMuted ? (
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M9 9v6a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path></svg>
+              ) : (
+                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+              )}
+            </button>
+
+            {gameState === GameState.PLAYING && (
+              <button
+                onClick={onPause}
+                className="p-3 rounded-full border-2 border-white text-white hover:bg-white hover:text-black transition-all"
+                title="暂停"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    // --- 4. MAIN APP ---
+    const App = () => {
+      const [gameState, setGameState] = useState(GameState.MENU);
+      const [score, setScore] = useState(0);
+
+      const startGame = () => {
+        setGameState(GameState.PLAYING);
+        setScore(0);
+        audioManager.startMusic();
+      };
+
+      const resumeGame = () => {
+        setGameState(GameState.PLAYING);
+        audioManager.startMusic();
+      };
+
+      const pauseGame = () => {
+        setGameState(GameState.PAUSED);
+      };
+
+      const restartGame = () => {
+        setGameState(GameState.PLAYING);
+        setScore(0);
+        audioManager.startMusic();
+      };
+
+      useEffect(() => {
+        if (gameState === GameState.GAME_OVER) {
+          audioManager.stopMusic();
+        }
+      }, [gameState]);
+
+      return (
+        <div className="relative w-full h-screen bg-slate-900 overflow-hidden flex items-center justify-center">
+          <div className="relative w-full h-full max-w-[1920px] aspect-video shadow-2xl bg-black">
+            <GameCanvas 
+              gameState={gameState} 
+              setGameState={setGameState}
+              setScore={setScore}
+            />
+            
+            <Controls 
+              gameState={gameState} 
+              onPause={pauseGame}
+              score={score}
+            />
+
+            <MenuOverlay 
+              gameState={gameState}
+              score={score}
+              onStart={startGame}
+              onResume={resumeGame}
+              onRestart={restartGame}
+            />
+          </div>
+          
+          <div className="absolute bottom-4 text-gray-500 text-sm opacity-50 pointer-events-none md:hidden font-cn">
+            点击屏幕跳跃
+          </div>
+        </div>
+      );
+    };
+
+    // --- 5. RENDER ---
+    const rootElement = document.getElementById('root');
+    if (rootElement) {
+        const root = ReactDOM.createRoot(rootElement);
+        root.render(
+        <React.StrictMode>
+            <App />
+        </React.StrictMode>
+        );
+    }
+  </script>
+</body>
 </html>
